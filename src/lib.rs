@@ -110,10 +110,18 @@ mod nft {
         }
 
         fn exists(&self, id: u64) -> bool {
-            self.owners.get(&id).is_some()
+            self.owners.contains_key(&id)
         }
 
         fn impl_transfer_from(&mut self, from: &AccountId, to: &AccountId, id: u64) -> Result<()> {
+            if !self.exists(id) {
+                return Err(Error::TokenNotFound);
+            }
+
+            if self.owners.get(&id) != Some(from) {
+                return Err(Error::NotAllowed);
+            }
+
             self.remove_token_from(from, id)?;
             self.add_token_to(to, id)?;
 
@@ -234,6 +242,27 @@ mod nft {
             nft.transfer(bob!(), 0).unwrap();
 
             assert_eq!(nft.owner_of(0), Some(bob!()));
+        }
+
+        #[ink::test]
+        fn transfer_someone_elses_token() {
+            let mut nft = NFT::new();
+            nft.mint(1).unwrap();
+
+            use_account!(bob!());
+
+            let result = nft.transfer(alice!(), 0);
+
+            assert_eq!(result, Err(Error::NotAllowed));
+        }
+
+        #[ink::test]
+        fn transfer_non_existing_token() {
+            let mut nft = NFT::new();
+
+            let result = nft.transfer(bob!(), 0);
+
+            assert_eq!(result, Err(Error::TokenNotFound));
         }
 
         #[ink::test]
