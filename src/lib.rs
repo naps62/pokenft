@@ -9,8 +9,9 @@ mod nft {
     #[ink(storage)]
     pub struct NFT {
         owners: HashMap<TokenId, AccountId>,
-        approved: HashMap<TokenId, AccountId>,
         counts: HashMap<AccountId, TokenId>,
+        approved: HashMap<TokenId, AccountId>,
+        operators: HashMap<(AccountId, AccountId), bool>,
     }
 
     #[derive(Debug, PartialEq, Eq, scale::Encode)]
@@ -54,6 +55,7 @@ mod nft {
                 owners: Default::default(),
                 approved: Default::default(),
                 counts: Default::default(),
+                operators: Default::default(),
             }
         }
 
@@ -95,8 +97,21 @@ mod nft {
         }
 
         #[ink(message)]
-        pub fn approve_all(&mut self, _approved: AccountId) {
-            panic!("not implemented");
+        pub fn set_approval_for_all(&mut self, operator: AccountId, approval: bool) -> Result<()> {
+            self.assert_valid_account(&operator)?;
+
+            let caller = self.env().caller();
+
+            if operator == self.env().caller() {
+                return Err(Error::NotAllowed);
+            }
+
+            self.operators
+                .entry((caller, operator))
+                .and_modify(|v| *v = approval)
+                .or_insert(approval);
+
+            Ok(())
         }
 
         #[ink(message)]
@@ -123,8 +138,8 @@ mod nft {
         }
 
         #[ink(message)]
-        pub fn is_approved_for_all(&self, _address: AccountId, _operator: AccountId) -> bool {
-            panic!("not implemented");
+        pub fn is_approved_for_all(&self, account: AccountId, operator: AccountId) -> bool {
+            *self.operators.get(&(account, operator)).unwrap_or(&false)
         }
 
         #[ink(message)]
@@ -163,7 +178,10 @@ mod nft {
             let owner = self.owner_of(id);
             let current_approver = self.approved.get(&id);
 
-            if !(owner == Some(caller) || current_approver == Some(&caller)) {
+            if !(owner == Some(caller)
+                || current_approver == Some(&caller)
+                || self.is_approved_for_all(owner.unwrap(), caller))
+            {
                 return Err(Error::NotAllowed);
             }
 
@@ -538,6 +556,27 @@ mod nft {
 
             assert_eq!(result, Err(Error::NotAllowed));
             assert_eq!(nft.get_approved(0), Some(bob!()));
+        }
+
+        #[ink::test]
+        fn approved_for_all() {
+            let mut nft = NFT::new();
+
+            assert_eq!(nft.is_approved_for_all(alice!(), bob!()), false);
+
+            nft.set_approval_for_all(bob!(), true).unwrap();
+
+            assert_eq!(nft.is_approved_for_all(alice!(), bob!()), true);
+        }
+
+        #[ink::test]
+        fn operator_can_transfer_from_owner() {
+            let mut nft = NFT::new();
+            nft.mint(0).unwrap();
+            nft.set_approval_for_all(bob!(), true).unwrap();
+
+            use_account!(bob!());
+            nft.transfer_from(alice!(), bob!(), 0).unwrap();
         }
     }
 }
