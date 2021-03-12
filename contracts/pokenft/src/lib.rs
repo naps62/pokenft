@@ -1,22 +1,26 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+mod rng;
+
 use ink_lang as ink;
 
 #[ink::contract]
-mod nft {
+mod pokenft {
+    use crate::rng;
     use ink_storage::collections::{hashmap::Entry, HashMap};
 
     #[ink(storage)]
-    pub struct NFT {
-        owners: HashMap<TokenId, AccountId>,
-        counts: HashMap<AccountId, TokenId>,
-        approved: HashMap<TokenId, AccountId>,
+    pub struct PokeNFT {
+        owners: HashMap<Seed, (AccountId, PokemonId)>,
+        counts: HashMap<AccountId, u32>,
+        approved: HashMap<Seed, AccountId>,
         operators: HashMap<(AccountId, AccountId), bool>,
     }
 
     #[derive(Debug, PartialEq, Eq, scale::Encode)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum Error {
+        InvalidSeed,
         NotOwner,
         NotAllowed,
         InvalidAddress,
@@ -26,29 +30,30 @@ mod nft {
         CannotRemove,
     }
 
-    pub type TokenId = u64;
+    pub type Seed = [u8; 32];
+    pub type PokemonId = u32;
     pub type Result<T> = core::result::Result<T, Error>;
 
     #[ink(event)]
     pub struct Minted {
-        amount: TokenId,
+        amount: PokemonId,
         owner: AccountId,
     }
 
     #[ink(event)]
     pub struct Transfer {
-        id: TokenId,
+        seed: Seed,
         from: Option<AccountId>,
         to: Option<AccountId>,
     }
 
     #[ink(event)]
     pub struct Approval {
-        id: TokenId,
+        seed: Seed,
         account: Option<AccountId>,
     }
 
-    impl NFT {
+    impl PokeNFT {
         #[ink(constructor)]
         pub fn new() -> Self {
             Self {
@@ -60,36 +65,41 @@ mod nft {
         }
 
         #[ink(message)]
-        pub fn balance_of(&self, owner: AccountId) -> TokenId {
+        pub fn balance_of(&self, owner: AccountId) -> u32 {
             *self.counts.get(&owner).unwrap_or(&0)
         }
 
         #[ink(message)]
-        pub fn owner_of(&self, id: TokenId) -> Option<AccountId> {
-            self.owners.get(&id).cloned()
+        pub fn owner_of(&self, seed: Seed) -> Option<AccountId> {
+            self.owners.get(&seed).cloned().map(|(account, _)| account)
         }
 
         #[ink(message)]
-        pub fn transfer(&mut self, to: AccountId, id: TokenId) -> Result<()> {
+        pub fn pokemon_of(&self, seed: Seed) -> Option<PokemonId> {
+            self.owners.get(&seed).cloned().map(|(_, pokemon)| pokemon)
+        }
+
+        #[ink(message)]
+        pub fn transfer(&mut self, to: AccountId, seed: Seed) -> Result<()> {
             let caller = self.env().caller();
-            self.impl_transfer_from(&caller, &to, id)
+            self.impl_transfer_from(&caller, &to, seed)
         }
 
         #[ink(message)]
-        pub fn transfer_from(&mut self, from: AccountId, to: AccountId, id: TokenId) -> Result<()> {
-            self.impl_transfer_from(&from, &to, id)
+        pub fn transfer_from(&mut self, from: AccountId, to: AccountId, seed: Seed) -> Result<()> {
+            self.impl_transfer_from(&from, &to, seed)
         }
 
         #[ink(message)]
-        pub fn approve(&mut self, approved: AccountId, id: TokenId) -> Result<()> {
-            self.assert_exists(id)?;
+        pub fn approve(&mut self, approved: AccountId, seed: Seed) -> Result<()> {
+            self.assert_exists(seed)?;
             self.assert_valid_account(&approved)?;
-            self.assert_owner_or_approved(id)?;
+            self.assert_owner_or_approved(seed)?;
 
-            self.approved.insert(id, approved);
+            self.approved.insert(seed, approved);
 
             self.env().emit_event(Approval {
-                id,
+                seed,
                 account: Some(approved),
             });
 
@@ -115,17 +125,20 @@ mod nft {
         }
 
         #[ink(message)]
-        pub fn clear_approval(&mut self, id: TokenId) -> Result<()> {
-            self.assert_exists(id)?;
-            self.assert_owner_or_approved(id)?;
+        pub fn clear_approval(&mut self, seed: Seed) -> Result<()> {
+            self.assert_exists(seed)?;
+            self.assert_owner_or_approved(seed)?;
 
-            if !self.approved.contains_key(&id) {
+            if !self.approved.contains_key(&seed) {
                 return Ok(());
             }
 
-            match self.approved.take(&id) {
+            match self.approved.take(&seed) {
                 Some(_) => {
-                    self.env().emit_event(Approval { id, account: None });
+                    self.env().emit_event(Approval {
+                        seed,
+                        account: None,
+                    });
                     Ok(())
                 }
                 None => Err(Error::CannotRemove),
@@ -133,8 +146,8 @@ mod nft {
         }
 
         #[ink(message)]
-        pub fn get_approved(&self, id: TokenId) -> Option<AccountId> {
-            self.approved.get(&id).cloned()
+        pub fn get_approved(&self, seed: Seed) -> Option<AccountId> {
+            self.approved.get(&seed).cloned()
         }
 
         #[ink(message)]
@@ -143,22 +156,22 @@ mod nft {
         }
 
         #[ink(message)]
-        pub fn mint(&mut self, id: TokenId) -> Result<()> {
+        pub fn mint(&mut self, seed: Seed) -> Result<()> {
             let owner = self.env().caller();
 
-            self.add_token_to(&owner, id).unwrap();
+            self.add_token_to(&owner, seed)?;
 
             self.env().emit_event(Transfer {
                 from: None,
                 to: Some(owner),
-                id,
+                seed,
             });
 
             Ok(())
         }
 
-        fn assert_exists(&self, id: TokenId) -> Result<()> {
-            if !self.exists(id) {
+        fn assert_exists(&self, seed: Seed) -> Result<()> {
+            if !self.exists(seed) {
                 return Err(Error::TokenNotFound);
             }
 
@@ -173,10 +186,10 @@ mod nft {
             Ok(())
         }
 
-        fn assert_owner_or_approved(&self, id: TokenId) -> Result<()> {
+        fn assert_owner_or_approved(&self, seed: Seed) -> Result<()> {
             let caller = self.env().caller();
-            let owner = self.owner_of(id);
-            let current_approver = self.approved.get(&id);
+            let owner = self.owner_of(seed);
+            let current_approver = self.approved.get(&seed);
 
             if !(owner == Some(caller)
                 || current_approver == Some(&caller)
@@ -188,35 +201,35 @@ mod nft {
             Ok(())
         }
 
-        fn exists(&self, id: TokenId) -> bool {
-            self.owners.contains_key(&id)
+        fn exists(&self, seed: Seed) -> bool {
+            self.owners.contains_key(&seed)
         }
 
         fn impl_transfer_from(
             &mut self,
             from: &AccountId,
             to: &AccountId,
-            id: TokenId,
+            seed: Seed,
         ) -> Result<()> {
-            self.assert_exists(id)?;
-            self.assert_owner_or_approved(id)?;
+            self.assert_exists(seed)?;
+            self.assert_owner_or_approved(seed)?;
             self.assert_valid_account(to)?;
 
-            self.clear_approval(id)?;
-            self.remove_token_from(from, id)?;
-            self.add_token_to(to, id)?;
+            self.clear_approval(seed)?;
+            self.remove_token_from(from, seed)?;
+            self.add_token_to(to, seed)?;
 
             self.env().emit_event(Transfer {
                 from: Some(*from),
                 to: Some(*to),
-                id,
+                seed,
             });
 
             Ok(())
         }
 
-        fn remove_token_from(&mut self, from: &AccountId, id: TokenId) -> Result<()> {
-            let entry = match self.owners.entry(id) {
+        fn remove_token_from(&mut self, from: &AccountId, seed: Seed) -> Result<()> {
+            let entry = match self.owners.entry(seed) {
                 Entry::Vacant(_) => return Err(Error::TokenNotFound),
                 Entry::Occupied(entry) => entry,
             };
@@ -227,8 +240,10 @@ mod nft {
             Ok(())
         }
 
-        fn add_token_to(&mut self, to: &AccountId, id: TokenId) -> Result<()> {
-            let entry = match self.owners.entry(id) {
+        fn add_token_to(&mut self, to: &AccountId, seed: Seed) -> Result<()> {
+            let id = rng::sample(seed).map_err(|_| Error::InvalidSeed)?;
+
+            let entry = match self.owners.entry(seed) {
                 Entry::Vacant(entry) => entry,
                 Entry::Occupied(_) => return Err(Error::TokenAlreadyExists),
             };
@@ -237,7 +252,7 @@ mod nft {
                 return Err(Error::NotAllowed);
             }
 
-            entry.insert(*to);
+            entry.insert((*to, id));
             self.increase_count(to)?;
 
             Ok(())
@@ -309,6 +324,12 @@ mod nft {
             };
         }
 
+        macro_rules! seed {
+            ($seed:expr) => {
+                [$seed; 32]
+            };
+        }
+
         fn get_event(idx: usize) -> Event {
             let raw_event = recorded_events()
                 .nth(idx)
@@ -324,15 +345,15 @@ mod nft {
 
         #[ink::test]
         fn mint() {
-            let mut nft = NFT::new();
-            nft.mint(10).unwrap();
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(10)).unwrap();
 
-            assert_eq!(nft.owners.get(&10), Some(alice!()).as_ref());
+            assert_eq!(nft.owners.get(&seed!(10)), Some(&(alice!(), 16)));
 
-            if let Event::Transfer(Transfer { from, to, id }) = last_event() {
+            if let Event::Transfer(Transfer { from, to, seed }) = last_event() {
                 assert_eq!(from, None);
                 assert_eq!(to, Some(alice!()));
-                assert_eq!(id, 10);
+                assert_eq!(seed, seed!(10));
             } else {
                 panic!("Expected to find Transfer event");
             };
@@ -340,17 +361,17 @@ mod nft {
 
         #[ink::test]
         fn transfer() {
-            let mut nft = NFT::new();
-            nft.mint(0).unwrap();
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
 
-            nft.transfer(bob!(), 0).unwrap();
+            nft.transfer(bob!(), seed!(0)).unwrap();
 
-            assert_eq!(nft.owner_of(0), Some(bob!()));
+            assert_eq!(nft.owner_of(seed!(0)), Some(bob!()));
 
-            if let Event::Transfer(Transfer { from, to, id }) = last_event() {
+            if let Event::Transfer(Transfer { from, to, seed }) = last_event() {
                 assert_eq!(from, Some(alice!()));
                 assert_eq!(to, Some(bob!()));
-                assert_eq!(id, 0);
+                assert_eq!(seed, seed!(0));
             } else {
                 panic!("Expected to find Transfer event");
             };
@@ -358,78 +379,78 @@ mod nft {
 
         #[ink::test]
         fn transfer_someone_elses_token() {
-            let mut nft = NFT::new();
-            nft.mint(0).unwrap();
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
 
             use_account!(bob!());
 
-            let result = nft.transfer(alice!(), 0);
+            let result = nft.transfer(alice!(), seed!(0));
 
             assert_eq!(result, Err(Error::NotAllowed));
         }
 
         #[ink::test]
         fn approved_transfers_from() {
-            let mut nft = NFT::new();
-            nft.mint(0).unwrap();
-            nft.approve(bob!(), 0).unwrap();
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
+            nft.approve(bob!(), seed!(0)).unwrap();
 
             use_account!(bob!());
-            let result = nft.transfer_from(alice!(), charlie!(), 0);
+            let result = nft.transfer_from(alice!(), charlie!(), seed!(0));
 
             assert_eq!(result, Ok(()));
-            assert_eq!(nft.owner_of(0).unwrap(), charlie!());
+            assert_eq!(nft.owner_of(seed!(0)).unwrap(), charlie!());
         }
 
         #[ink::test]
         fn unapproved_transfers_from() {
-            let mut nft = NFT::new();
-            nft.mint(0).unwrap();
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
 
             use_account!(bob!());
-            let result = nft.transfer_from(alice!(), charlie!(), 0);
+            let result = nft.transfer_from(alice!(), charlie!(), seed!(0));
 
             assert_eq!(result, Err(Error::NotAllowed));
-            assert_eq!(nft.owner_of(0).unwrap(), alice!());
+            assert_eq!(nft.owner_of(seed!(0)).unwrap(), alice!());
         }
 
         #[ink::test]
         fn transfer_non_existing_token() {
-            let mut nft = NFT::new();
+            let mut nft = PokeNFT::new();
 
-            let result = nft.transfer(bob!(), 0);
+            let result = nft.transfer(bob!(), seed!(0));
 
             assert_eq!(result, Err(Error::TokenNotFound));
         }
 
         #[ink::test]
         fn transfer_removes_approval() {
-            let mut nft = NFT::new();
-            nft.mint(0).unwrap();
-            nft.approve(bob!(), 0).unwrap();
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
+            nft.approve(bob!(), seed!(0)).unwrap();
 
-            nft.transfer(charlie!(), 0).unwrap();
+            nft.transfer(charlie!(), seed!(0)).unwrap();
 
-            assert_eq!(nft.get_approved(0), None);
+            assert_eq!(nft.get_approved(seed!(0)), None);
         }
 
         #[ink::test]
         fn balance_of() {
-            let mut nft = NFT::new();
-            nft.mint(0).unwrap();
-            nft.mint(1).unwrap();
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
+            nft.mint(seed!(1)).unwrap();
 
             assert_eq!(nft.balance_of(alice!()), 2);
             assert_eq!(nft.balance_of(bob!()), 0);
 
-            nft.transfer(bob!(), 0).unwrap();
+            nft.transfer(bob!(), seed!(0)).unwrap();
 
             assert_eq!(nft.balance_of(alice!()), 1);
             assert_eq!(nft.balance_of(bob!()), 1);
 
             use_account!(bob!());
 
-            nft.transfer(alice!(), 0).unwrap();
+            nft.transfer(alice!(), seed!(0)).unwrap();
 
             assert_eq!(nft.balance_of(alice!()), 2);
             assert_eq!(nft.balance_of(bob!()), 0);
@@ -437,36 +458,47 @@ mod nft {
 
         #[ink::test]
         fn owner_of() {
-            let mut nft = NFT::new();
-            nft.mint(0).unwrap();
-            nft.mint(1).unwrap();
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
+            nft.mint(seed!(1)).unwrap();
 
-            assert_eq!(nft.owner_of(0), Some(alice!()));
-            assert_eq!(nft.owner_of(1), Some(alice!()));
-            assert_eq!(nft.owner_of(2), None);
+            assert_eq!(nft.owner_of(seed!(0)), Some(alice!()));
+            assert_eq!(nft.owner_of(seed!(1)), Some(alice!()));
+            assert_eq!(nft.owner_of(seed!(2)), None);
 
-            nft.transfer(bob!(), 0).unwrap();
+            nft.transfer(bob!(), seed!(0)).unwrap();
 
-            assert_eq!(nft.owner_of(0), Some(bob!()));
-            assert_eq!(nft.owner_of(1), Some(alice!()));
-            assert_eq!(nft.owner_of(2), None);
+            assert_eq!(nft.owner_of(seed!(0)), Some(bob!()));
+            assert_eq!(nft.owner_of(seed!(1)), Some(alice!()));
+            assert_eq!(nft.owner_of(seed!(2)), None);
         }
 
-        type Event = <NFT as ::ink_lang::BaseEvent>::Type;
+        #[ink::test]
+        fn pokemon_of() {
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
+            nft.mint(seed!(1)).unwrap();
+
+            assert_eq!(nft.pokemon_of(seed!(0)), Some(72));
+            assert_eq!(nft.pokemon_of(seed!(1)), Some(20));
+            assert_eq!(nft.pokemon_of(seed!(2)), None);
+        }
+
+        type Event = <PokeNFT as ::ink_lang::BaseEvent>::Type;
 
         #[ink::test]
         fn approved() {
-            let mut nft = NFT::new();
-            nft.mint(0).unwrap();
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
 
-            assert_eq!(nft.get_approved(0), None);
+            assert_eq!(nft.get_approved(seed!(0)), None);
 
-            nft.approve(bob!(), 0).unwrap();
+            nft.approve(bob!(), seed!(0)).unwrap();
 
-            assert_eq!(nft.get_approved(0), Some(bob!()));
+            assert_eq!(nft.get_approved(seed!(0)), Some(bob!()));
 
-            if let Event::Approval(Approval { id, account }) = get_event(1) {
-                assert_eq!(id, 0);
+            if let Event::Approval(Approval { seed, account }) = get_event(1) {
+                assert_eq!(seed, seed!(0));
                 assert_eq!(account, Some(bob!()));
             } else {
                 panic!("Expected last event to be an Approval");
@@ -474,93 +506,96 @@ mod nft {
         }
 
         #[ink::test]
-        fn approve_0_address() {
-            let mut nft = NFT::new();
-            nft.mint(0).unwrap();
+        fn approve_zero_address() {
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
 
-            assert_eq!(nft.approve(zero_account!(), 0), Err(Error::InvalidAddress));
+            assert_eq!(
+                nft.approve(zero_account!(), seed!(0)),
+                Err(Error::InvalidAddress)
+            );
         }
 
         #[ink::test]
         fn approve_while_not_owner() {
-            let mut nft = NFT::new();
-            nft.mint(0).unwrap();
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
 
             use_account!(bob!());
 
-            assert_eq!(nft.approve(bob!(), 0), Err(Error::NotAllowed));
+            assert_eq!(nft.approve(bob!(), seed!(0)), Err(Error::NotAllowed));
         }
 
         #[ink::test]
         fn approve_non_existing_token() {
-            let mut nft = NFT::new();
-            assert_eq!(nft.get_approved(0), None);
+            let mut nft = PokeNFT::new();
+            assert_eq!(nft.get_approved(seed!(0)), None);
 
-            let result = nft.approve(bob!(), 0);
+            let result = nft.approve(bob!(), seed!(0));
 
             assert_eq!(result, Err(Error::TokenNotFound));
         }
 
         #[ink::test]
         fn approve_while_approved() {
-            let mut nft = NFT::new();
-            nft.mint(0).unwrap();
-            nft.approve(bob!(), 0).unwrap();
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
+            nft.approve(bob!(), seed!(0)).unwrap();
 
             use_account!(bob!());
-            let result = nft.approve(alice!(), 0);
+            let result = nft.approve(alice!(), seed!(0));
 
             assert_eq!(result, Ok(()));
         }
 
         #[ink::test]
         fn clear_approval() {
-            let mut nft = NFT::new();
+            let mut nft = PokeNFT::new();
 
-            nft.mint(0).unwrap();
+            nft.mint(seed!(0)).unwrap();
 
-            nft.approve(bob!(), 0).unwrap();
-            assert_eq!(nft.get_approved(0), Some(bob!()));
+            nft.approve(bob!(), seed!(0)).unwrap();
+            assert_eq!(nft.get_approved(seed!(0)), Some(bob!()));
 
-            nft.clear_approval(0).unwrap();
+            nft.clear_approval(seed!(0)).unwrap();
 
-            assert_eq!(nft.get_approved(0), None);
+            assert_eq!(nft.get_approved(seed!(0)), None);
         }
 
         #[ink::test]
         fn approver_removes_itself() {
-            let mut nft = NFT::new();
+            let mut nft = PokeNFT::new();
 
-            nft.mint(0).unwrap();
+            nft.mint(seed!(0)).unwrap();
 
-            nft.approve(bob!(), 0).unwrap();
-            assert_eq!(nft.get_approved(0), Some(bob!()));
+            nft.approve(bob!(), seed!(0)).unwrap();
+            assert_eq!(nft.get_approved(seed!(0)), Some(bob!()));
 
             use_account!(bob!());
-            nft.clear_approval(0).unwrap();
+            nft.clear_approval(seed!(0)).unwrap();
 
-            assert_eq!(nft.get_approved(0), None);
+            assert_eq!(nft.get_approved(seed!(0)), None);
         }
 
         #[ink::test]
         fn other_user_fails_to_remove_approver() {
-            let mut nft = NFT::new();
+            let mut nft = PokeNFT::new();
 
-            nft.mint(0).unwrap();
+            nft.mint(seed!(0)).unwrap();
 
-            nft.approve(bob!(), 0).unwrap();
-            assert_eq!(nft.get_approved(0), Some(bob!()));
+            nft.approve(bob!(), seed!(0)).unwrap();
+            assert_eq!(nft.get_approved(seed!(0)), Some(bob!()));
 
             use_account!(charlie!());
-            let result = nft.clear_approval(0);
+            let result = nft.clear_approval(seed!(0));
 
             assert_eq!(result, Err(Error::NotAllowed));
-            assert_eq!(nft.get_approved(0), Some(bob!()));
+            assert_eq!(nft.get_approved(seed!(0)), Some(bob!()));
         }
 
         #[ink::test]
         fn approved_for_all() {
-            let mut nft = NFT::new();
+            let mut nft = PokeNFT::new();
 
             assert_eq!(nft.is_approved_for_all(alice!(), bob!()), false);
 
@@ -571,12 +606,12 @@ mod nft {
 
         #[ink::test]
         fn operator_can_transfer_from_owner() {
-            let mut nft = NFT::new();
-            nft.mint(0).unwrap();
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
             nft.set_approval_for_all(bob!(), true).unwrap();
 
             use_account!(bob!());
-            nft.transfer_from(alice!(), bob!(), 0).unwrap();
+            nft.transfer_from(alice!(), bob!(), seed!(0)).unwrap();
         }
     }
 }
