@@ -6,7 +6,6 @@ use ink_lang as ink;
 mod pokenft {
     extern crate alloc;
 
-    // use crate::rng;
     use alloc::vec::Vec;
     use ink_storage::collections::{hashmap::Entry, HashMap};
 
@@ -117,13 +116,19 @@ mod pokenft {
         }
 
         #[ink(message)]
-        pub fn owner_of(&self, seed: Seed) -> Option<AccountId> {
-            self.seeds.get(&seed).cloned().map(|(account, _)| account)
+        pub fn owner_of(&self, seed: Seed) -> AccountId {
+            self.seeds
+                .get(&seed)
+                .cloned()
+                .map_or(AccountId::from([0x0; 32]), |(account, _)| account)
         }
 
         #[ink(message)]
-        pub fn pokemon_of(&self, seed: Seed) -> Option<PokemonId> {
-            self.seeds.get(&seed).cloned().map(|(_, pokemon)| pokemon)
+        pub fn pokemon_of(&self, seed: Seed) -> PokemonId {
+            self.seeds
+                .get(&seed)
+                .cloned()
+                .map_or(0, |(_, pokemon)| pokemon)
         }
 
         #[ink(message)]
@@ -238,9 +243,9 @@ mod pokenft {
             let owner = self.owner_of(seed);
             let current_approver = self.approved.get(&seed);
 
-            if !(owner == Some(caller)
+            if !(owner == caller
                 || current_approver == Some(&caller)
-                || self.is_approved_for_all(owner.unwrap(), caller))
+                || self.is_approved_for_all(owner, caller))
             {
                 return Err(Error::NotAllowed);
             }
@@ -397,13 +402,23 @@ mod pokenft {
         }
 
         #[ink::test]
+        fn cant_mint_twice() {
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(1)).unwrap();
+
+            let result = nft.mint(seed!(1));
+
+            assert_eq!(result, Err(Error::TokenAlreadyExists));
+        }
+
+        #[ink::test]
         fn transfer() {
             let mut nft = PokeNFT::new();
             nft.mint(seed!(0)).unwrap();
 
             nft.transfer(bob!(), seed!(0)).unwrap();
 
-            assert_eq!(nft.owner_of(seed!(0)), Some(bob!()));
+            assert_eq!(nft.owner_of(seed!(0)), bob!());
 
             if let Event::Transfer(Transfer { from, to, seed }) = last_event() {
                 assert_eq!(from, Some(alice!()));
@@ -436,7 +451,7 @@ mod pokenft {
             let result = nft.transfer_from(alice!(), charlie!(), seed!(0));
 
             assert_eq!(result, Ok(()));
-            assert_eq!(nft.owner_of(seed!(0)).unwrap(), charlie!());
+            assert_eq!(nft.owner_of(seed!(0)), charlie!());
         }
 
         #[ink::test]
@@ -448,7 +463,7 @@ mod pokenft {
             let result = nft.transfer_from(alice!(), charlie!(), seed!(0));
 
             assert_eq!(result, Err(Error::NotAllowed));
-            assert_eq!(nft.owner_of(seed!(0)).unwrap(), alice!());
+            assert_eq!(nft.owner_of(seed!(0)), alice!());
         }
 
         #[ink::test]
@@ -516,15 +531,15 @@ mod pokenft {
             nft.mint(seed!(0)).unwrap();
             nft.mint(seed!(1)).unwrap();
 
-            assert_eq!(nft.owner_of(seed!(0)), Some(alice!()));
-            assert_eq!(nft.owner_of(seed!(1)), Some(alice!()));
-            assert_eq!(nft.owner_of(seed!(2)), None);
+            assert_eq!(nft.owner_of(seed!(0)), alice!());
+            assert_eq!(nft.owner_of(seed!(1)), alice!());
+            assert_eq!(nft.owner_of(seed!(2)), zero_account!());
 
             nft.transfer(bob!(), seed!(0)).unwrap();
 
-            assert_eq!(nft.owner_of(seed!(0)), Some(bob!()));
-            assert_eq!(nft.owner_of(seed!(1)), Some(alice!()));
-            assert_eq!(nft.owner_of(seed!(2)), None);
+            assert_eq!(nft.owner_of(seed!(0)), bob!());
+            assert_eq!(nft.owner_of(seed!(1)), alice!());
+            assert_eq!(nft.owner_of(seed!(2)), zero_account!());
         }
 
         #[ink::test]
@@ -533,9 +548,9 @@ mod pokenft {
             nft.mint(seed!(0)).unwrap();
             nft.mint(seed!(1)).unwrap();
 
-            assert_eq!(nft.pokemon_of(seed!(0)), Some(72));
-            assert_eq!(nft.pokemon_of(seed!(1)), Some(19));
-            assert_eq!(nft.pokemon_of(seed!(2)), None);
+            assert_eq!(nft.pokemon_of(seed!(0)), 72);
+            assert_eq!(nft.pokemon_of(seed!(1)), 19);
+            assert_eq!(nft.pokemon_of(seed!(2)), 0);
         }
 
         type Event = <PokeNFT as ::ink_lang::BaseEvent>::Type;
