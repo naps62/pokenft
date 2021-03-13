@@ -4,13 +4,16 @@ use ink_lang as ink;
 
 #[ink::contract]
 mod pokenft {
+    extern crate alloc;
+
     // use crate::rng;
+    use alloc::vec::Vec;
     use ink_storage::collections::{hashmap::Entry, HashMap};
 
     #[ink(storage)]
     pub struct PokeNFT {
-        owners: HashMap<Seed, (AccountId, PokemonId)>,
-        counts: HashMap<AccountId, u32>,
+        seeds: HashMap<Seed, (AccountId, PokemonId)>,
+        owners: HashMap<AccountId, Vec<Seed>>,
         approved: HashMap<Seed, AccountId>,
         operators: HashMap<(AccountId, AccountId), bool>,
     }
@@ -96,26 +99,31 @@ mod pokenft {
         #[ink(constructor)]
         pub fn new() -> Self {
             Self {
+                seeds: Default::default(),
                 owners: Default::default(),
                 approved: Default::default(),
-                counts: Default::default(),
                 operators: Default::default(),
             }
         }
 
         #[ink(message)]
         pub fn balance_of(&self, owner: AccountId) -> u32 {
-            *self.counts.get(&owner).unwrap_or(&0)
+            self.owners.get(&owner).map(|s| s.len() as u32).unwrap_or(0)
+        }
+
+        #[ink(message)]
+        pub fn tokens_of(&self, owner: AccountId) -> Vec<Seed> {
+            self.owners.get(&owner).cloned().unwrap_or(Vec::new())
         }
 
         #[ink(message)]
         pub fn owner_of(&self, seed: Seed) -> Option<AccountId> {
-            self.owners.get(&seed).cloned().map(|(account, _)| account)
+            self.seeds.get(&seed).cloned().map(|(account, _)| account)
         }
 
         #[ink(message)]
         pub fn pokemon_of(&self, seed: Seed) -> Option<PokemonId> {
-            self.owners.get(&seed).cloned().map(|(_, pokemon)| pokemon)
+            self.seeds.get(&seed).cloned().map(|(_, pokemon)| pokemon)
         }
 
         #[ink(message)]
@@ -241,7 +249,7 @@ mod pokenft {
         }
 
         fn exists(&self, seed: Seed) -> bool {
-            self.owners.contains_key(&seed)
+            self.seeds.contains_key(&seed)
         }
 
         fn impl_transfer_from(
@@ -268,13 +276,18 @@ mod pokenft {
         }
 
         fn remove_token_from(&mut self, from: &AccountId, seed: Seed) -> Result<()> {
-            let entry = match self.owners.entry(seed) {
+            // remove entry from seeds hash
+            let seeds_entry = match self.seeds.entry(seed) {
                 Entry::Vacant(_) => return Err(Error::TokenNotFound),
                 Entry::Occupied(entry) => entry,
             };
+            seeds_entry.remove_entry();
 
-            entry.remove_entry();
-            self.decrease_count(from)?;
+            // remove entry from owner's vec of owned seeds
+            self.owners
+                .get_mut(from)
+                .ok_or(Error::NotOwner)?
+                .retain(|&owned_seed| owned_seed != seed);
 
             Ok(())
         }
@@ -282,7 +295,7 @@ mod pokenft {
         fn add_token_to(&mut self, to: &AccountId, seed: Seed) -> Result<()> {
             let id = rng::sample(seed).map_err(|_| Error::InvalidSeed)?;
 
-            let entry = match self.owners.entry(seed) {
+            let seeds_entry = match self.seeds.entry(seed) {
                 Entry::Vacant(entry) => entry,
                 Entry::Occupied(_) => return Err(Error::TokenAlreadyExists),
             };
@@ -291,24 +304,9 @@ mod pokenft {
                 return Err(Error::NotAllowed);
             }
 
-            entry.insert((*to, id));
-            self.increase_count(to)?;
+            seeds_entry.insert((*to, id));
 
-            Ok(())
-        }
-
-        fn decrease_count(&mut self, account: &AccountId) -> Result<()> {
-            let count = self.counts.get_mut(account).ok_or(Error::ValueNotFound)?;
-            *count -= 1;
-
-            Ok(())
-        }
-
-        fn increase_count(&mut self, account: &AccountId) -> Result<()> {
-            self.counts
-                .entry(*account)
-                .and_modify(|v| *v += 1)
-                .or_insert(1);
+            self.owners.entry(*to).or_insert(Vec::new()).push(seed);
 
             Ok(())
         }
@@ -387,7 +385,7 @@ mod pokenft {
             let mut nft = PokeNFT::new();
             nft.mint(seed!(10)).unwrap();
 
-            assert_eq!(nft.owners.get(&seed!(10)), Some(&(alice!(), 16)));
+            assert_eq!(nft.seeds.get(&seed!(10)), Some(&(alice!(), 16)));
 
             if let Event::Transfer(Transfer { from, to, seed }) = last_event() {
                 assert_eq!(from, None);
@@ -493,6 +491,23 @@ mod pokenft {
 
             assert_eq!(nft.balance_of(alice!()), 2);
             assert_eq!(nft.balance_of(bob!()), 0);
+        }
+
+        #[ink::test]
+        fn tokens_of() {
+            let mut nft = PokeNFT::new();
+            nft.mint(seed!(0)).unwrap();
+            nft.mint(seed!(1)).unwrap();
+
+            let empty: Vec<Seed> = vec![];
+
+            assert_eq!(nft.tokens_of(alice!()), vec![seed!(0), seed!(1)]);
+            assert_eq!(nft.tokens_of(bob!()), empty);
+
+            nft.transfer(bob!(), seed!(0)).unwrap();
+
+            assert_eq!(nft.tokens_of(alice!()), vec![seed!(1)]);
+            assert_eq!(nft.tokens_of(bob!()), vec![seed!(0)]);
         }
 
         #[ink::test]
