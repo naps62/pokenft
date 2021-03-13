@@ -1,12 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-mod rng;
-
 use ink_lang as ink;
 
 #[ink::contract]
 mod pokenft {
-    use crate::rng;
+    // use crate::rng;
     use ink_storage::collections::{hashmap::Entry, HashMap};
 
     #[ink(storage)]
@@ -17,7 +15,7 @@ mod pokenft {
         operators: HashMap<(AccountId, AccountId), bool>,
     }
 
-    #[derive(Debug, PartialEq, Eq, scale::Encode)]
+    #[derive(Debug, scale::Encode, scale::Decode, PartialEq, Eq, Copy, Clone)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum Error {
         InvalidSeed,
@@ -51,6 +49,47 @@ mod pokenft {
     pub struct Approval {
         seed: Seed,
         account: Option<AccountId>,
+    }
+
+    mod rng {
+        use rand::prelude::*;
+        use rand_chacha::ChaChaRng;
+
+        // indexes are pokemon IDs. values are weights within entire population.
+        // e.g. #0 is Bulbasaur, which has 376 specimen within a total population of 10 million
+        pub const POKEMON_LIST: [u32; 151] = [
+            376, 251, 188, 376, 251, 188, 376, 251, 188, 187967, 9398, 4699, 187967, 9398, 4699,
+            187967, 187967, 187967, 187967, 187967, 187967, 187967, 187967, 187967, 376, 342,
+            187967, 187967, 187967, 187967, 187967, 187967, 187967, 31328, 93983, 23496, 37593,
+            18797, 187967, 18797, 187967, 187967, 187967, 93983, 187967, 187967, 93983, 187967,
+            93983, 187967, 18797, 187967, 93983, 187967, 187967, 187967, 37593, 18797, 9398, 37593,
+            18797, 9398, 37593, 18797, 9398, 37593, 18797, 9398, 37593, 18797, 9398, 187967, 93983,
+            187967, 93983, 46992, 46992, 31328, 187967, 93983, 187967, 62656, 62656, 187967, 62656,
+            187967, 62656, 187967, 62656, 31328, 18797, 37593, 18797, 9398, 187967, 187967, 46992,
+            187967, 62656, 187967, 46992, 23496, 18797, 46992, 26852, 6266, 6266, 9398, 18797,
+            9398, 18797, 9398, 9398, 9398, 9398, 7519, 4699, 7519, 4699, 7519, 4699, 3759, 3759,
+            3759, 3759, 3759, 3759, 4699, 3759, 3759, 3759, 3759, 3759, 1880, 1880, 1880, 1880,
+            1213, 964, 1213, 964, 964, 964, 188, 188, 188, 627, 470, 372, 31, 20,
+        ];
+
+        pub fn sample(seed: super::Seed) -> super::Result<u32> {
+            let mut rng = ChaChaRng::from_seed(seed);
+            let mut r: u32 = rng.gen_range(0..10_000_000);
+
+            let mut result = 0;
+            for idx in 0..POKEMON_LIST.len() {
+                let population = POKEMON_LIST[idx];
+
+                if population >= r {
+                    result = idx + 1;
+                    break;
+                } else {
+                    r = r.saturating_sub(population);
+                }
+            }
+
+            Ok(result as u32)
+        }
     }
 
     impl PokeNFT {
@@ -480,7 +519,7 @@ mod pokenft {
             nft.mint(seed!(1)).unwrap();
 
             assert_eq!(nft.pokemon_of(seed!(0)), Some(72));
-            assert_eq!(nft.pokemon_of(seed!(1)), Some(20));
+            assert_eq!(nft.pokemon_of(seed!(1)), Some(19));
             assert_eq!(nft.pokemon_of(seed!(2)), None);
         }
 

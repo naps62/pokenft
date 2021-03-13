@@ -15,13 +15,12 @@ scale = { package = "parity-scale-codec", version = "2.0.1", default-features = 
 scale-info = { version = "0.6.0", default-features = false, features = ["derive"], optional = true }
 rand = { version = "0.8.3", default-features = false }
 rand_chacha = { version = "0.3.0", default-features = false }
-rand_distr = { version = "0.4.0", default-features = false }
 
 # Should be removed once bitvecto-rs/bitvec#105 is resolved
 funty = "=1.1.0"
 
 [lib]
-name = "flipper"
+name = "pokenft"
 path = "src/lib.rs"
 crate-type = [
 	# Used for normal contract Wasm blobs.
