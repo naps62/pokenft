@@ -5,10 +5,12 @@ import Select from "react-select";
 import { loadAccounts } from "../lib/api";
 import type { Account } from "../lib/api";
 
-const toOptions = (accounts: Account[]) =>
-  accounts.map(({ address, meta }) => {
-    return { value: address, label: `${meta.name} - ${address}` };
+const toOptions = (accounts: Account[]) => {
+  return accounts.map((account) => {
+    const { address, meta } = account;
+    return { value: account, label: `${meta.name} - ${address}` };
   });
+};
 
 const Header: FC = () => {
   const [accounts, setAccounts] = useState<null | Account[]>(null);
@@ -26,10 +28,10 @@ const Header: FC = () => {
   }, [state.web3_enabled, dispatch]);
 
   const onChange = useCallback(
-    (e) => {
-      dispatch({ type: "set_account", account: accounts![e.target.value] });
+    (option) => {
+      dispatch({ type: "set_account", account: option.value });
     },
-    [dispatch, accounts]
+    [dispatch]
   );
 
   console.log(1);
@@ -38,14 +40,7 @@ const Header: FC = () => {
   } else {
     return (
       <div>
-        <Select options={toOptions(accounts)} />
-        <select onChange={onChange}>
-          {accounts.map((account, i) => (
-            <option key={account.address} value={i}>
-              {account.meta.name} - {account.address}
-            </option>
-          ))}
-        </select>
+        <Select onChange={onChange} options={toOptions(accounts)} />
       </div>
     );
   }

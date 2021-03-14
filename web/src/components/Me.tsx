@@ -1,7 +1,7 @@
 import React, { FC, useState, useEffect, useContext } from "react";
 import { ApiContext } from "./ApiContext";
 
-const ALICE = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
+import TokenCard from "./TokenCard";
 
 const Me: FC = (props) => {
   const [tokens, setTokens] = useState<any[]>([]);
@@ -26,7 +26,9 @@ const Me: FC = (props) => {
       <h1>Tokens</h1>
       <ul>
         {tokens.map((token) => (
-          <li key={token}>{token}</li>
+          <li key={token}>
+            <TokenCard token={token} />
+          </li>
         ))}
       </ul>
     </section>
