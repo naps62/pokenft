@@ -3,12 +3,13 @@ import { HashRouter as Router, Route, Switch } from "react-router-dom";
 import "./App.css";
 
 import Header from "./components/Header";
-import EnsureApi from "./components/EnsureApi";
 import Me from "./components/Me";
+
+import { ApiContextProvider } from "./components/ApiContext";
 
 function App() {
   return (
-    <EnsureApi>
+    <ApiContextProvider>
       <Router>
         <Header />
         <Switch>
@@ -16,7 +17,7 @@ function App() {
           <Route path="/" component={Index} />
         </Switch>
       </Router>
-    </EnsureApi>
+    </ApiContextProvider>
   );
 }
 

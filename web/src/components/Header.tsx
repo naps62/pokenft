@@ -1,9 +1,12 @@
 import React, { FC } from "react";
 import { Link } from "react-router-dom";
 
-const Header: FC = (props) => {
+import AccountPicker from "./AccountPicker";
+
+const Header: FC = () => {
   return (
     <nav>
+      <AccountPicker />
       <ul>
         <li>
           <Link to="/">Home</Link>

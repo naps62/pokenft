@@ -1,28 +1,35 @@
-import React, { FC, useState, useEffect } from "react";
-import { ApiContext } from "../lib/api";
-
-interface Props {
-  ctx: ApiContext;
-}
+import React, { FC, useState, useEffect, useContext } from "react";
+import { ApiContext } from "./ApiContext";
 
 const ALICE = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
 
-const Me: FC<Props> = (props) => {
+const Me: FC = (props) => {
   const [tokens, setTokens] = useState<any[]>([]);
+  const [state] = useContext(ApiContext);
 
-  console.log(props);
   useEffect(() => {
-    (props.ctx.nft as any)
-      .tokens_of(ALICE, { value: 0, gasLimit: 0 }, ALICE)
-      .then(setTokens);
-  }, []);
+    if (!state.account) {
+      return;
+    }
+
+    const { address } = state.account!;
+
+    state
+      .api!.nft.query.tokensOf(address, { value: 0, gasLimit: 0 }, address)
+      .then(({ output }: any) => {
+        setTokens(output);
+      });
+  }, [state.account, state.api]);
 
   return (
-    <ul>
-      {tokens.map((token) => (
-        <li>{token}</li>
-      ))}
-    </ul>
+    <section>
+      <h1>Tokens</h1>
+      <ul>
+        {tokens.map((token) => (
+          <li key={token}>{token}</li>
+        ))}
+      </ul>
+    </section>
   );
 };
 
