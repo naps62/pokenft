@@ -1,8 +1,14 @@
 import React, { FC, useState, useEffect, useContext, useCallback } from "react";
 import { ApiContext } from "./ApiContext";
+import Select from "react-select";
 
 import { loadAccounts } from "../lib/api";
 import type { Account } from "../lib/api";
+
+const toOptions = (accounts: Account[]) =>
+  accounts.map(({ address, meta }) => {
+    return { value: address, label: `${meta.name} - ${address}` };
+  });
 
 const Header: FC = () => {
   const [accounts, setAccounts] = useState<null | Account[]>(null);
@@ -19,8 +25,6 @@ const Header: FC = () => {
     });
   }, [state.web3_enabled, dispatch]);
 
-  console.log(accounts);
-
   const onChange = useCallback(
     (e) => {
       dispatch({ type: "set_account", account: accounts![e.target.value] });
@@ -28,11 +32,13 @@ const Header: FC = () => {
     [dispatch, accounts]
   );
 
+  console.log(1);
   if (accounts == null) {
     return <div>Loading Accounts</div>;
   } else {
     return (
       <div>
+        <Select options={toOptions(accounts)} />
         <select onChange={onChange}>
           {accounts.map((account, i) => (
             <option key={account.address} value={i}>
