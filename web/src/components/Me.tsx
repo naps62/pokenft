@@ -24,10 +24,8 @@ const Me: FC = (props) => {
 
   return (
     <section>
-      <h2>Buy a Pokemon</h2>
-      <Buy />
-      <h2>Your Tokens</h2>
-      <ul>
+      <h2 className="text-lg mb-5">Your Tokens</h2>
+      <ul className="grid gap-4 grid-cols-3">
         {tokens.map((token) => (
           <li key={token}>
             <TokenCard token={token} />

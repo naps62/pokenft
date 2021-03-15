@@ -1,24 +1,26 @@
 import React, { FC, useState, useCallback, useContext } from "react";
 import { ApiContext } from "./ApiContext";
+import { useToasts } from "react-toast-notifications";
 
 import { signAndSend } from "../lib/api";
 
 const Buy: FC = () => {
   const [seed, setSeed] = useState<string>("");
   const [state] = useContext(ApiContext);
+  const { addToast } = useToasts();
 
-  console.log(state.account);
   const onSubmit = useCallback(() => {
     const value = 0; // only useful on isPayable messages
     const gasLimit = 20000 * 1000000;
 
     const tx = state.api!.nft.tx.mint({ value, gasLimit }, seed);
 
+    addToast("[Buy] Sending transaction", { appearance: "info" });
     signAndSend(tx, state.account!, (r: any) => {
       if (r.status.isInBlock) {
-        console.log("in a block");
+        addToast("[Buy] in a Block", { appearance: "success" });
       } else if (r.status.isFinalized) {
-        console.log("finalized");
+        addToast("[Buy] Finalized", { appearance: "success" });
       }
     });
   }, [seed, state.account, state.api]);
@@ -30,8 +32,21 @@ const Buy: FC = () => {
 
   return (
     <form onSubmit={onSubmit}>
-      <input type="text" onChange={onInputChange} placeholder="Seed" />
-      <input type="submit" value="Buy" />
+      <h2 className="text-lg mb-5">Buy a Pokemon</h2>
+      <div className="flex flex-col">
+        <input
+          type="text"
+          onChange={onInputChange}
+          placeholder="Seed"
+          className="rounded-t-md border border-solid border-red-500 p-2"
+        />
+        <br />
+        <input
+          type="submit"
+          value="Buy"
+          className="rounded-b-md border border-solid border-red-500 bg-red-500 border-t-0 p-2 text-white hover:bg-red-700 cursor-pointer"
+        />
+      </div>
     </form>
   );
 };

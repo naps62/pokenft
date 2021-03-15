@@ -5,16 +5,29 @@ import AccountPicker from "./AccountPicker";
 
 const Header: FC = () => {
   return (
-    <nav>
-      <AccountPicker />
-      <ul>
-        <li>
-          <Link to="/">Home</Link>
-        </li>
-        <li>
-          <Link to="/me">Me</Link>
-        </li>
-      </ul>
+    <nav className="flex">
+      <div className="flex-grow mr-10">
+        <AccountPicker />
+      </div>
+      <div className="flex-grow-0">
+        <ul className="flex flex-grow content-center">
+          <li className="p-2">
+            <Link to="/" className="underline text-red-500">
+              Home
+            </Link>
+          </li>
+          <li className="p-2">
+            <Link to="/buy" className="underline text-red-500">
+              Buy
+            </Link>
+          </li>
+          <li className="p-2">
+            <Link to="/me" className="underline text-red-500">
+              Me
+            </Link>
+          </li>
+        </ul>
+      </div>
     </nav>
   );
 };

@@ -1,6 +1,7 @@
 import React, { FC, useState, useEffect, useContext, useCallback } from "react";
 import { ApiContext } from "./ApiContext";
 import Select from "react-select";
+import { useToasts } from "react-toast-notifications";
 
 import { loadAccounts } from "../lib/api";
 import type { Account } from "../lib/api";
@@ -15,6 +16,17 @@ const toOptions = (accounts: Account[]) => {
 const Header: FC = () => {
   const [accounts, setAccounts] = useState<null | Account[]>(null);
   const [state, dispatch] = useContext(ApiContext);
+  const { addToast } = useToasts();
+
+  useEffect(() => {
+    if (!state.account) {
+      return;
+    }
+
+    addToast(`Using account ${state.account.meta.name}`, {
+      appearance: "success",
+    });
+  }, [addToast, state.account]);
 
   useEffect(() => {
     if (!state.web3_enabled) {
@@ -39,7 +51,11 @@ const Header: FC = () => {
   } else {
     return (
       <div>
-        <Select onChange={onChange} options={toOptions(accounts)} />
+        <Select
+          onChange={onChange}
+          options={toOptions(accounts)}
+          placeholder="Choose your account"
+        />
       </div>
     );
   }
