@@ -34,7 +34,6 @@ const Header: FC = () => {
     [dispatch]
   );
 
-  console.log(1);
   if (accounts == null) {
     return <div>Loading Accounts</div>;
   } else {

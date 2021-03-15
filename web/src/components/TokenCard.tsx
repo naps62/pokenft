@@ -8,6 +8,7 @@ interface Props {
 const TokenCard: FC<Props> = ({ token }) => {
   const [state] = useContext(ApiContext);
   const [id, setId] = useState<number | undefined>();
+  const [poke, setPoke] = useState<any | undefined>();
 
   useEffect(() => {
     state
@@ -21,12 +22,29 @@ const TokenCard: FC<Props> = ({ token }) => {
       });
   }, [state.api, state.account, token]);
 
-  return (
-    <div>
-      <div>{id}</div>
-      <div>{token}</div>
-    </div>
-  );
+  useEffect(() => {
+    if (!id) {
+      return;
+    }
+
+    fetch(`https://pokeapi.co/api/v2/pokemon/${id}`)
+      .then((resp) => resp.json())
+      .then((data) => setPoke(data));
+  }, [id]);
+
+  if (!!poke) {
+    return (
+      <div>
+        <div>
+          #{id} - {poke.name}
+        </div>
+        <div>{token}</div>
+        <img src={poke.sprites.front_default} alt={poke.name} />
+      </div>
+    );
+  } else {
+    return <div>Loading {id}</div>;
+  }
 };
 
 export default TokenCard;

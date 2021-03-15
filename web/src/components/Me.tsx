@@ -2,6 +2,7 @@ import React, { FC, useState, useEffect, useContext } from "react";
 import { ApiContext } from "./ApiContext";
 
 import TokenCard from "./TokenCard";
+import Buy from "./Buy";
 
 const Me: FC = (props) => {
   const [tokens, setTokens] = useState<any[]>([]);
@@ -23,7 +24,9 @@ const Me: FC = (props) => {
 
   return (
     <section>
-      <h1>Tokens</h1>
+      <h2>Buy a Pokemon</h2>
+      <Buy />
+      <h2>Your Tokens</h2>
       <ul>
         {tokens.map((token) => (
           <li key={token}>
