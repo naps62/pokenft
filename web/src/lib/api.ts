@@ -14,7 +14,7 @@ export interface Api {
   nft: ContractPromise;
 }
 
-const ContractAddress = "5ER6cXA9ovc4khdgivvV2mcQwjSu6Az8ajtJNqfNNzGuA6QN";
+const ContractAddress = "5EdFvU7Dv5gxJPheKaaCwd1FiJ1DxUaigWgpFoHqWY1Tsj96";
 
 export const loadClient = async (): Promise<ApiPromise> => {
   const wsProvider = new WsProvider("ws://127.0.0.1:9944");

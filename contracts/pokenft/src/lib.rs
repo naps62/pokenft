@@ -7,6 +7,7 @@ mod pokenft {
     extern crate alloc;
 
     use alloc::vec::Vec;
+    use ink_prelude::format;
     use ink_storage::collections::{hashmap::Entry, HashMap};
 
     #[ink(storage)]

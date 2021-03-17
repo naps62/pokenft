@@ -2,7 +2,7 @@ import React, { FC, useState, useEffect, useContext, useCallback } from "react";
 import { ApiContext } from "./ApiContext";
 
 interface Props {
-  token: string;
+  token: any;
 }
 
 const TypeColors: Record<string, string> = {
@@ -29,6 +29,14 @@ const TypeColors: Record<string, string> = {
 const typeColor = (poke: any): string => {
   return TypeColors[(poke.types[0] as any).type.name] as string;
 };
+
+function binToString(array: number[]) {
+  var result = "";
+  for (var i = 0; i < array.length; i++) {
+    result += String.fromCharCode(array[i]);
+  }
+  return result;
+}
 
 const TokenCard: FC<Props> = ({ token }) => {
   const [state] = useContext(ApiContext);
@@ -71,6 +79,7 @@ const TokenCard: FC<Props> = ({ token }) => {
         <div>
           #{id} - {poke.name}
         </div>
+        <div>Seed: "{binToString(token)}"</div>
         <img src={poke.sprites.front_default} alt={poke.name} />
       </div>
     );

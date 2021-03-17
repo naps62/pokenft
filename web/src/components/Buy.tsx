@@ -6,24 +6,29 @@ import { signAndSend } from "../lib/api";
 
 const Buy: FC = () => {
   const [seed, setSeed] = useState<string>("");
-  const [state] = useContext(ApiContext);
+  const [state, dispatch] = useContext(ApiContext);
   const { addToast } = useToasts();
 
-  const onSubmit = useCallback(() => {
-    const value = 0; // only useful on isPayable messages
-    const gasLimit = 20000 * 1000000;
+  const onSubmit = useCallback(
+    (e) => {
+      e.preventDefault();
+      const value = 0; // only useful on isPayable messages
+      const gasLimit = 60000 * 1000000;
 
-    const tx = state.api!.nft.tx.mint({ value, gasLimit }, seed);
+      const tx = state.api!.nft.tx.mint({ value, gasLimit }, seed);
 
-    addToast("[Buy] Sending transaction", { appearance: "info" });
-    signAndSend(tx, state.account!, (r: any) => {
-      if (r.status.isInBlock) {
-        addToast("[Buy] in a Block", { appearance: "success" });
-      } else if (r.status.isFinalized) {
-        addToast("[Buy] Finalized", { appearance: "success" });
-      }
-    });
-  }, [seed, state.account, state.api]);
+      addToast("[Buy] Sending transaction", { appearance: "info" });
+      signAndSend(tx, state.account!, (r: any) => {
+        dispatch({ type: "token_bought" });
+        if (r.status.isInBlock) {
+          addToast("[Buy] in a Block", { appearance: "success" });
+        } else if (r.status.isFinalized) {
+          addToast("[Buy] Finalized", { appearance: "success" });
+        }
+      });
+    },
+    [seed, state.account, state.api]
+  );
 
   const onInputChange = useCallback((e) => {
     e.preventDefault();

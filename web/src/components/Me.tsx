@@ -20,19 +20,24 @@ const Me: FC = (props) => {
       .then(({ output }: any) => {
         setTokens(output);
       });
-  }, [state.account, state.api]);
+  }, [state.account, state.api, state.tokens_bought]);
 
   return (
-    <section>
-      <h2 className="text-lg mb-5">Your Tokens</h2>
-      <ul className="grid gap-4 grid-cols-3">
-        {tokens.map((token) => (
-          <li key={token}>
-            <TokenCard token={token} />
-          </li>
-        ))}
-      </ul>
-    </section>
+    <div>
+      <section>
+        <Buy />
+      </section>
+      <section>
+        <h2 className="text-lg mb-5">Your Tokens</h2>
+        <ul className="grid gap-4 grid-cols-5">
+          {tokens.map((token) => (
+            <li key={token}>
+              <TokenCard token={token} />
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
   );
 };
 
